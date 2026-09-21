@@ -17,7 +17,7 @@
 
 ARG NODE_VERSION=24.16
 # Buildstage: use the local architecture
-FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS buildstage
+FROM --platform=$BUILDPLATFORM docker.io/library/node:${NODE_VERSION}-alpine AS buildstage
 
 WORKDIR /work
 # Only copy what is needed for the build

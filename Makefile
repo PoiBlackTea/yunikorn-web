@@ -19,7 +19,7 @@
 .PHONY: test test_go test_js_coverage test_js
 .PHONY: license-check lint
 .PHONY: build start-dev build_server_dev json-server clean distclean
-.PHONY: tools deps run build-prod build_server_prod image
+.PHONY: tools deps run build-prod build_server_prod image print_docker
 
 # Check if this GO tools version used is at least the version of go specified in
 # the go.mod file. The version in go.mod should be in sync with other repos.
@@ -83,6 +83,15 @@ endif
 # This tag of the image must be changed when pushed to a public repository.
 ifeq ($(REGISTRY),)
 REGISTRY := apache
+endif
+
+# Container engine used to build images. Can be overridden with DOCKER=podman.
+ifeq ($(DOCKER),)
+ifneq ($(shell command -v docker 2>/dev/null),)
+DOCKER := docker
+else
+DOCKER := podman
+endif
 endif
 
 # Reproducible builds mode
@@ -153,6 +162,9 @@ endif
 
 all:
 	$(MAKE) -C $(dir $(BASE_DIR)) build
+
+print_docker:
+	@echo $(DOCKER)
 
 # Install tools
 tools: $(PNPM_BIN) $(NG_BIN) $(GOLANGCI_LINT_BIN)
@@ -251,7 +263,7 @@ NODE_VERSION := $(shell cat .nvmrc)
 image: $(RELEASE_BIN_DIR)/$(SERVER_BINARY)
 	@echo "Building web UI docker image"
 	DOCKER_BUILDKIT=1 \
-	docker build -t "$(WEB_TAG)" . \
+	$(DOCKER) build -t "$(WEB_TAG)" . \
 	--platform "linux/${DOCKER_ARCH}" \
 	--label "yunikorn-web-revision=${WEB_SHA}" \
 	--label "Version=${VERSION}" \
@@ -284,9 +296,9 @@ $(RELEASE_BIN_DIR)/$(SERVER_BINARY): go.mod go.sum $(shell find pkg)
 	@echo "building web server binary"
 	@mkdir -p ${RELEASE_BIN_DIR}
 ifeq ($(REPRO),1)
-	docker run -t --rm=true --volume "$(BASE_DIR):/buildroot" "golang:$(GO_REPRO_VERSION)" sh -c "cd /buildroot && \
+	$(DOCKER) run -t --rm=true --volume "$(BASE_DIR):/buildroot" "docker.io/library/golang:$(GO_REPRO_VERSION)" sh -c "cd /buildroot && \
 	CGO_ENABLED=0 GOOS=linux GOARCH=\"${EXEC_ARCH}\" \
-	go build -a -o=${RELEASE_BIN_DIR}/${SERVER_BINARY} -trimpath -ldflags \
+	go build -a -o=${RELEASE_BIN_DIR}/${SERVER_BINARY} -trimpath -buildvcs=false -ldflags \
 	'-buildid= -extldflags \"-static\" -X main.version=${VERSION} -X main.date=${DATE}' \
 	-tags netgo \
 	./pkg/cmd/web/"
@@ -300,7 +312,7 @@ endif
 
 # Run the web interface from the production image
 run: image
-	docker run -d -p ${PORT}:9889 "$(WEB_TAG)"
+	$(DOCKER) run -d -p ${PORT}:9889 "$(WEB_TAG)"
 
 # Start the json-server based on the json-db and route.
 json-server: deps
